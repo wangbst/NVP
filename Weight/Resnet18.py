@@ -69,20 +69,12 @@ model = ResNet18()
 # Move the model to the device
 model = model.to(device)
 
-# Rest of the code remains the same...
-
-# Prune 90% of weights across all layers
-def prune_weights(model, amount=0.75): # 0.8, 0.85, 0.9, 0.95, 0.97, 0.98
-
-# Apply weight pruning
-prune_weights(model, amount=0.75)
-
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.optim as optim
 
 # Configuration
-learning_rate = 0.003125
+learning_rate = 0.005
 momentum = 0.9
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum,weight_decay=5e-4)
@@ -126,18 +118,17 @@ def calculate_entropy(tensor):
     entropy = -torch.sum(tensor * torch.log2(tensor), dim=tuple(range(1, tensor.dim())))
     return entropy
 
+def calculate_importance_score(weights, entropies,eta=2):
+    return scores ** eta
 
-run = wandb.init(project="24", 
-                 config={"batch_size": batch_size,
-                         "learning_rate": learning_rate,
-                         "momentum": momentum
-                         } )
+# Pruning function
+def prune_model(model, amount,eta=2):
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Conv2d):
 
 val_losses = []
 train_losses = []
 test_losses = []
-pruned_neurons = []  # To store number of pruned neurons per epoch
-kl_divergences = []  # To store KL divergence per epoch
 best_test_accuracy = 0.0
 
 # Training Loop
@@ -145,9 +136,6 @@ for epoch in range(250):  # loop over the dataset
     running_loss = 0.0
     correct_train = 0
     total_train = 0
-    
-    pruned_neurons_epoch = 0  # Initialize pruned_neurons_epoch for the current epoch
-    kl_divergence = 0.0
 
     for i, data in enumerate(trainloader, 0):
         # Get the inputs; data is a list of [inputs, labels]
@@ -179,6 +167,9 @@ for epoch in range(250):  # loop over the dataset
     train_losses.append(train_loss)
         
     print(f'Training Error at Epoch {epoch + 1}: {train_loss}')
+    
+    # Apply pruning based on importance score
+    prune_model(model, amount=0.75,eta=2)
     
     model.eval()
     val_loss = 0.0
@@ -212,20 +203,7 @@ for epoch in range(250):  # loop over the dataset
     
     model.train()
 
-    # Log test error
-    wandb.log({'epoch': epoch, 'val_loss': test_loss, 'val_accuracy': test_acc})
     val_losses.append(test_loss)
-
-    # Perform pruning based on KL divergence and entropy reduction
-                
-    kl_divergences.append(kl_divergence)
-    pruned_neurons.append(pruned_neurons_epoch)
-    # Logging pruned neurons and KL divergence on WandB
-    wandb.log({'epoch': epoch, 'pruned_neurons': pruned_neurons_epoch, 'kl_divergence': kl_divergence})
-    
-    # Reset pruned_neurons_epoch and kl_divergence after logging
-    pruned_neurons_epoch = 0
-    kl_divergence = 0.0
 
 # Close all hooks
 for hook in hooks:
@@ -233,9 +211,6 @@ for hook in hooks:
 
 for hook in entropy_hooks:
     hook.close()
-
-# Close WandB run
-wandb.finish()
 
 # Print best test accuracy
 print(f"Best Test Accuracy: {best_test_accuracy}%")
