@@ -6,7 +6,6 @@ import torchvision
 import torchvision.transforms as transforms
 import torch.nn as nn
 import torch.nn.functional as F
-import wandb
 import numpy as np
 import torch.optim as optim
 import torch.nn.utils as utils
@@ -69,8 +68,13 @@ model = ResNet18()
 # Move the model to the device
 model = model.to(device)
 
-# Prune 50% of neurons before entering each epoch
-def prune_neurons(model, percentage=0.5): #0.6, 0.7, 0.75, 0.8, 0.85, 0.9
+# Define the pruning function based on importance scores
+def prune_neurons(model, eta=2, sparsity=0.6):
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Conv2d):
+            
+        elif isinstance(module, nn.Linear):
+            
 
 
 # Rest of the code remains the same...
@@ -131,32 +135,19 @@ def calculate_entropy(tensor):
     return entropy
 
 
-run = wandb.init(project="27", 
-                 config={"batch_size": batch_size,
-                         "learning_rate": learning_rate,
-                         "momentum": momentum
-                         } )
-
 val_losses = []
 train_losses = []
 test_losses = []
-pruned_neurons = []  # To store number of pruned neurons per epoch
-kl_divergences = []  # To store KL divergence per epoch
 best_test_accuracy = 0.0
 
 
 # Training Loop
 for epoch in range(300):  # loop over the dataset
     # Prune neurons before each epoch
-    prune_neurons(model, percentage=0.5)
-    
     running_loss = 0.0
     correct_train = 0
     total_train = 0
     
-    pruned_neurons_epoch = 0  # Initialize pruned_neurons_epoch for the current epoch
-    kl_divergence = 0.0
-
     for i, data in enumerate(trainloader, 0):
         # Get the inputs; data is a list of [inputs, labels]
         inputs, labels = data
@@ -213,26 +204,16 @@ for epoch in range(300):  # loop over the dataset
     print(f'Test Error at Epoch {epoch + 1}: {test_loss}')
     print(f'Test Accuracy at Epoch {epoch + 1}: {test_acc}%')
     
+    # Prune the model after each epoch
+    prune_neurons(model, eta=2, sparsity=0.6)
+    
     # Update best test accuracy
     if test_acc > best_test_accuracy:
         best_test_accuracy = test_acc
     
     model.train()
 
-    # Log test error
-    wandb.log({'epoch': epoch, 'val_loss': test_loss, 'val_accuracy': test_acc})
     val_losses.append(test_loss)
-
-    # Perform pruning based on KL divergence and entropy reduction
-    
-    kl_divergences.append(kl_divergence)            
-    pruned_neurons.append(pruned_neurons_epoch)
-    # Logging pruned neurons and KL divergence on WandB
-    wandb.log({'epoch': epoch, 'pruned_neurons': pruned_neurons_epoch, 'kl_divergence': kl_divergence})
-    
-    # Reset pruned_neurons_epoch and kl_divergence after logging
-    pruned_neurons_epoch = 0
-    kl_divergence = 0.0
 
 # Close all hooks
 for hook in hooks:
@@ -240,9 +221,6 @@ for hook in hooks:
 
 for hook in entropy_hooks:
     hook.close()
-
-# Close WandB run
-wandb.finish()
 
 # Print best test accuracy
 print(f"Best Test Accuracy: {best_test_accuracy}%")
